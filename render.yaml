@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: hps
+    runtime: python
+    buildCommand: pip install -r backend/requirements.txt && cd frontend && npm install && npm run build
+    startCommand: cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: PYTHON_VERSION
+        value: "3.11"
+      - key: DATABASE_PATH
+        value: /data/historical.db
+    disk:
+      name: hps-db
+      mountPath: /data
+      sizeGB: 1
