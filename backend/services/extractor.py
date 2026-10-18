@@ -51,6 +51,10 @@ def extract_profile(name: str, text: str) -> dict:
     if not text or not text.strip():
         raise HTTPException(status_code=400, detail="No source text to analyse")
 
-    raw = complete(f"Text to analyse:\n{text}", system=SYSTEM_PROMPT, max_tokens=1000)
+    # temperature=0: the same text must always produce the same profile, or the
+    # same description silently yields different matches on every retry.
+    raw = complete(
+        f"Text to analyse:\n{text}", system=SYSTEM_PROMPT, max_tokens=1000, temperature=0
+    )
     data = parse_json_object(raw, what="Profile extraction")
     return parse_profile(data, name=name)

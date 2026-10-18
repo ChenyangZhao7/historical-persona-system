@@ -81,9 +81,10 @@ export default function Match() {
       } else {
         setResult(res.data)
         const vec = res.data.user_profile?.vector ?? Array(10).fill(0.5)
+        const conf = res.data.user_profile?.confidence ?? null
         setExplorerVector(vec)
         setExplorerMatches([])
-        localStorage.setItem("hps_profile", JSON.stringify({ vector: vec, description, timestamp: Date.now() }))
+        localStorage.setItem("hps_profile", JSON.stringify({ vector: vec, confidence: conf, description, timestamp: Date.now() }))
         if (localFigures.length === 0) refreshCache()
       }
     } catch (err) {

@@ -58,12 +58,21 @@ def _missing_key_message(kind: str) -> str:
     return "ANTHROPIC_API_KEY is not set. Put it in .env or export it before starting the server."
 
 
-def _complete_anthropic(api_key: str, model: str, system: str | None, user: str, max_tokens: int) -> str:
+def _complete_anthropic(
+    api_key: str,
+    model: str,
+    system: str | None,
+    user: str,
+    max_tokens: int,
+    temperature: float | None = None,
+) -> str:
     import anthropic
 
     kwargs = {}
     if system:
         kwargs["system"] = system
+    if temperature is not None:
+        kwargs["temperature"] = temperature
     try:
         client = anthropic.Anthropic(api_key=api_key, timeout=DEFAULT_TIMEOUT)
         response = client.messages.create(
@@ -78,13 +87,22 @@ def _complete_anthropic(api_key: str, model: str, system: str | None, user: str,
 
 
 def _complete_openai_compatible(
-    api_key: str, model: str, system: str | None, user: str, max_tokens: int
+    api_key: str,
+    model: str,
+    system: str | None,
+    user: str,
+    max_tokens: int,
+    temperature: float | None = None,
 ) -> str:
     base_url = os.environ.get("DEEPSEEK_BASE_URL", DEFAULT_DEEPSEEK_BASE_URL).rstrip("/")
     messages = []
     if system:
         messages.append({"role": "system", "content": system})
     messages.append({"role": "user", "content": user})
+
+    payload = {"model": model, "max_tokens": max_tokens, "messages": messages, "stream": False}
+    if temperature is not None:
+        payload["temperature"] = temperature
 
     try:
         response = requests.post(
@@ -93,7 +111,7 @@ def _complete_openai_compatible(
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             },
-            json={"model": model, "max_tokens": max_tokens, "messages": messages, "stream": False},
+            json=payload,
             timeout=DEFAULT_TIMEOUT,
         )
     except requests.RequestException as exc:
@@ -112,8 +130,18 @@ def _complete_openai_compatible(
         raise HTTPException(status_code=502, detail=f"Unexpected {provider()} response: {exc}")
 
 
-def complete(user: str, *, system: str | None = None, max_tokens: int = 1000) -> str:
-    """Send one prompt to the configured provider and return the text."""
+def complete(
+    user: str,
+    *,
+    system: str | None = None,
+    max_tokens: int = 1000,
+    temperature: float | None = None,
+) -> str:
+    """Send one prompt to the configured provider and return the text.
+
+    `temperature` is left to the provider unless given. Scoring calls pass 0 so
+    the same text always yields the same profile; creative calls do not.
+    """
     kind, api_key, model = _settings()
     if not api_key:
         raise HTTPException(status_code=500, detail=_missing_key_message(kind))
@@ -121,5 +149,5 @@ def complete(user: str, *, system: str | None = None, max_tokens: int = 1000) ->
         raise HTTPException(status_code=400, detail="Prompt is empty")
 
     if kind == "deepseek":
-        return _complete_openai_compatible(api_key, model, system, user, max_tokens)
-    return _complete_anthropic(api_key, model, system, user, max_tokens)
+        return _complete_openai_compatible(api_key, model, system, user, max_tokens, temperature)
+    return _complete_anthropic(api_key, model, system, user, max_tokens, temperature)

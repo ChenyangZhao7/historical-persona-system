@@ -12,6 +12,8 @@ from services.matcher import (
     cosine_similarity,
     weighted_cosine_similarity,
     find_matches,
+    compared_dimensions,
+    covers_query,
     dimension_breakdown,
     is_comparable,
     mean_closeness,
@@ -181,6 +183,73 @@ def test_mean_closeness_is_zero_when_nothing_is_documented():
     breakdown = dimension_breakdown([0.5] * 10, [0.5] * 10,
                                     figure_confidence=[0.0] * 10)
     assert mean_closeness(breakdown) == 0.0
+
+def test_mean_closeness_ignores_dimensions_the_user_did_not_describe():
+    # The figure knows all ten dimensions; the user described only two.
+    # Those two agree perfectly, so the score must be 1.0 — not diluted by the
+    # eight dimensions the user never mentioned.
+    user_confidence = [1.0, 1.0] + [0.0] * 8
+    breakdown = dimension_breakdown(
+        [0.5] * 10, [0.5] * 10,
+        query_confidence=user_confidence,
+        figure_confidence=[1.0] * 10,
+    )
+    assert mean_closeness(breakdown) == pytest.approx(1.0)
+
+def test_compared_dimensions_requires_evidence_on_both_sides():
+    breakdown = dimension_breakdown(
+        [0.5] * 10, [0.5] * 10,
+        query_confidence=[1.0, 1.0, 1.0] + [0.0] * 7,
+        figure_confidence=[1.0] * 10,
+    )
+    assert compared_dimensions(breakdown) == 3
+    # the figure itself still covers all ten
+    assert known_dimensions(breakdown) == 10
+
+def test_compared_dimensions_is_zero_when_the_user_described_nothing():
+    breakdown = dimension_breakdown(
+        [0.5] * 10, [0.5] * 10,
+        query_confidence=[0.0] * 10,
+        figure_confidence=[1.0] * 10,
+    )
+    assert compared_dimensions(breakdown) == 0
+
+def test_covers_query_rejects_a_figure_missing_much_of_the_description():
+    # The user described eight dimensions; this figure can only speak to three.
+    breakdown = dimension_breakdown(
+        [0.5] * 10, [0.5] * 10,
+        query_confidence=[1.0] * 8 + [0.0] * 2,
+        figure_confidence=[1.0] * 3 + [0.0] * 7,
+    )
+    assert compared_dimensions(breakdown) == 3
+    assert not covers_query(breakdown, [1.0] * 8 + [0.0] * 2)
+
+def test_covers_query_allows_one_missing_dimension():
+    # Seven of eight is close enough; six is the required minimum.
+    breakdown = dimension_breakdown(
+        [0.5] * 10, [0.5] * 10,
+        query_confidence=[1.0] * 8 + [0.0] * 2,
+        figure_confidence=[1.0] * 7 + [0.0] * 3,
+    )
+    assert covers_query(breakdown, [1.0] * 8 + [0.0] * 2)
+
+def test_covers_query_is_permissive_without_query_confidence():
+    breakdown = dimension_breakdown(
+        [0.5] * 10, [0.5] * 10, figure_confidence=[1.0] * 2 + [0.0] * 8
+    )
+    assert covers_query(breakdown, None)
+
+@patch("services.matcher.get_all_profiles")
+def test_find_matches_skips_figures_covering_too_little_of_the_description(mock_profiles):
+    mock_profiles.return_value = [
+        dict(MOCK_PROFILES[0]),
+        {**MOCK_PROFILES[1], "confidence": json.dumps([0.9] * 4 + [0.0] * 6)},
+    ]
+    results = find_matches(
+        [0.5] * 10, top_k=5, query_confidence=[1.0] * 8 + [0.0] * 2
+    )
+    assert [r["name"] for r in results] == ["Caesar"]
+    assert all(r["compared_dimensions"] >= 6 for r in results)
 
 def test_mean_closeness_without_confidence_weights_every_dimension_equally():
     breakdown = dimension_breakdown([0.5] * 10, [0.4] * 10)

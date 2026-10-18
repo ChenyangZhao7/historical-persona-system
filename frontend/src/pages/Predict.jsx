@@ -68,6 +68,7 @@ export default function Predict() {
       const res = await axios.post(`${API}/predict/`, {
         question: question.trim(),
         user_vector: savedProfile.vector,
+        user_confidence: savedProfile.confidence ?? undefined,
       })
       setResult(res.data)
     } catch (err) {

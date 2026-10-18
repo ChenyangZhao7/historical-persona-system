@@ -84,6 +84,7 @@ export function findMatches(queryVector, figures, topK = 5, weights = null) {
       score: Math.round(cosine(wq, wf) * 10000) / 10000,
       closeness: meanCloseness(breakdown, weights),
       known_dimensions: known,
+      compared_dimensions: known,
       dimensions: breakdown,
     })
   }

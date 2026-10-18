@@ -8,6 +8,7 @@ from database import get_connection
 from services.matcher import (
     cosine_similarity,
     dimension_breakdown,
+    covers_query,
     is_comparable,
     known_dimensions,
     mean_closeness,
@@ -59,7 +60,7 @@ def reverse_match(
         breakdown = dimension_breakdown(
             target_vector, vector, target_confidence, confidence
         )
-        if not is_comparable(breakdown):
+        if not is_comparable(breakdown) or not covers_query(breakdown, target_confidence):
             continue
         results.append({
             "id": row["id"],

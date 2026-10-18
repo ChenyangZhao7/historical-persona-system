@@ -46,10 +46,12 @@ function fin(value) {
 
 // A figure's own confidence in a dimension. 0 means "no evidence at all", so
 // the value must not be read as a real 0.0.
-function isKnown(dim) {
-  return dim.figure_confidence === null || dim.figure_confidence === undefined
-    ? true
-    : dim.figure_confidence > 0
+function isKnown(value) {
+  return value === null || value === undefined ? true : value > 0
+}
+
+function dimensionKnown(dim) {
+  return isKnown(dim.figure_confidence) && isKnown(dim.query_confidence)
 }
 
 export function closenessColor(closeness) {
@@ -70,7 +72,9 @@ export function DimensionCompare({ dimensions, aLabel = "You", bLabel = "Them" }
         <span style={S.pct}>Match</span>
       </div>
       {dimensions.map((dim) => {
-        const known = isKnown(dim)
+        const known = dimensionKnown(dim)
+        const queryKnown = isKnown(dim.query_confidence)
+        const figureKnown = isKnown(dim.figure_confidence)
         const conf = dim.figure_confidence
         // Only "no evidence" is flagged. Almost every documented dimension in
         // the corpus carries a confidence between 0.3 and 0.8, so flagging
@@ -81,10 +85,13 @@ export function DimensionCompare({ dimensions, aLabel = "You", bLabel = "Them" }
         return (
           <div key={dim.dimension} style={{ ...S.grid, ...S.row }}>
             <span style={S.dimName} title={dim.dimension}>{dimensionLabel(dim.dimension)}</span>
-            <span style={S.num}>{dim.query.toFixed(2)}</span>
-            <span style={known ? S.num : S.numMuted} title={confTitle}>
+            <span style={queryKnown ? S.num : S.numMuted}>
+              {dim.query.toFixed(2)}
+              {!queryKnown && <span style={S.flag} title="Your description did not mention this trait — left out of the score">?</span>}
+            </span>
+            <span style={figureKnown ? S.num : S.numMuted} title={confTitle}>
               {dim.figure.toFixed(2)}
-              {!known && <span style={S.flag} title="No evidence for this dimension — left out of the score">?</span>}
+              {!figureKnown && <span style={S.flag} title="No evidence for this dimension in the figure's profile — left out of the score">?</span>}
             </span>
             <div style={S.track}>
               {known && <div style={{ ...S.fill(dim.closeness * 100), background: closenessColor(dim.closeness) }} />}
@@ -105,7 +112,12 @@ export function MatchScore({
   defaultOpen = false,
 }) {
   const [open, setOpen] = useState(defaultOpen)
-  const { closeness, known_dimensions: known, dimensions: dims } = match
+  const { closeness, dimensions: dims } = match
+  // Dimensions with evidence on both sides. Falls back to the figure's own
+  // coverage for payloads that predate query-side confidence.
+  const compared = fin(match.compared_dimensions)
+    ? match.compared_dimensions
+    : match.known_dimensions
 
   return (
     <>
@@ -116,8 +128,14 @@ export function MatchScore({
           </div>
           <div style={S.line}>
             <span style={S.closeness}>{Math.round(closeness * 100)}% similarity to {subject}</span>
-            {fin(known) && (
-              <> · <span style={S.unknown}>based on {known} of 10 dimensions</span></>
+            {fin(compared) && (
+              <>
+                {" · "}
+                <span style={S.unknown}>
+                  based on {compared} of 10 dimensions
+                  {compared < 6 ? " — describe more situations to compare the rest" : ""}
+                </span>
+              </>
             )}
           </div>
         </>

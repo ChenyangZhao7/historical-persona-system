@@ -76,14 +76,17 @@ export default function Reconstruct() {
     setResult(null)
 
     let source_vector = null
+    let source_confidence = null
 
     if (mode === "user") {
       source_vector = savedProfile.vector
+      source_confidence = savedProfile.confidence ?? null
     } else {
       setLoadingStep("Looking up figure profile…")
       try {
         const res = await axios.post(`${API}/analyze/`, { name: figureName.trim() })
         source_vector = res.data.profile.vector
+        source_confidence = res.data.profile.confidence ?? null
       } catch (err) {
         setError(err.response?.data?.detail || `Could not find profile for "${figureName}". Make sure they are in the database.`)
         setLoading(false)
@@ -96,6 +99,7 @@ export default function Reconstruct() {
       const res = await axios.post(`${API}/reconstruct/`, {
         action: action.trim(),
         source_vector,
+        source_confidence,
       })
       setResult(res.data)
     } catch (err) {

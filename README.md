@@ -35,9 +35,24 @@ similar this figure is to what you described:
 
 | Field | Meaning |
 |-------|---------|
-| `closeness` | Confidence-weighted average of `1 - \|difference\|` across the ten dimensions. This is the only similarity number the interface shows. |
-| `dimensions` | The same figure per dimension: both values, the gap, the agreement, and the figure's confidence in that dimension. |
-| `known_dimensions` | How many of the ten dimensions the figure's profile actually covers. |
+| `closeness` | Weighted average of `1 - \|difference\|` across the ten dimensions. This is the only similarity number the interface shows. |
+| `dimensions` | The same figure per dimension: both values, the gap, the agreement, and each side's confidence in that dimension. |
+| `known_dimensions` | How many of the ten dimensions the figure's profile covers. |
+| `compared_dimensions` | How many dimensions carry evidence on **both** sides — what the score actually rests on. |
+
+A dimension only counts when both profiles have evidence for it. A description
+that never mentions risk-taking must not be scored as if the user sat exactly in
+the middle of that scale; before this rule, a short description made the system
+rank "which figure is most average" rather than "which figure resembles me".
+The interface prints `based on 5 of 10 dimensions` so a thin description is
+visible rather than silent.
+
+Candidates must also cover at least 80% of the dimensions the caller described
+(`COVERAGE_SHARE`). Without that gate a figure documented on two of the user's
+six traits could take first place on a two-dimension score that is not
+comparable with a five-dimension one. Profile extraction runs at
+`temperature=0`, so the same text always yields the same profile — and therefore
+the same matches.
 
 Two things are deliberately **not** shown:
 

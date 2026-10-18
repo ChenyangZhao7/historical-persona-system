@@ -4,7 +4,9 @@ from database import connection
 from services.llm import complete
 from services.matcher import (
     cosine_similarity,
+    compared_dimensions,
     dimension_breakdown,
+    covers_query,
     is_comparable,
     known_dimensions,
     mean_closeness,
@@ -105,22 +107,23 @@ def _get_ancient_figures_with_vectors() -> list:
     return [dict(row) for row in rows]
 
 
-def _score_figures(figures: list, source_vector: list) -> list:
+def _score_figures(figures: list, source_vector: list, source_confidence: list = None) -> list:
     """Per-dimension agreement for every figure with a complete enough profile."""
     scored = []
     for fig in figures:
         vec = json.loads(fig["vector"])
         confidence = json.loads(fig["confidence"])
         breakdown = dimension_breakdown(
-            source_vector, vec, figure_confidence=confidence
+            source_vector, vec, source_confidence, confidence
         )
-        if not is_comparable(breakdown):
+        if not is_comparable(breakdown) or not covers_query(breakdown, source_confidence):
             continue
         scored.append({
             **fig,
             "score": round(cosine_similarity(source_vector, vec), 4),
             "closeness": mean_closeness(breakdown),
             "known_dimensions": known_dimensions(breakdown),
+            "compared_dimensions": compared_dimensions(breakdown),
             "dimensions": breakdown,
         })
     return scored
@@ -146,9 +149,11 @@ def _generate_narrative(figure: dict, action: str) -> str:
     return complete(prompt, max_tokens=900)
 
 
-def reconstruct_history(action: str, source_vector: list) -> dict:
+def reconstruct_history(
+    action: str, source_vector: list, source_confidence: list = None
+) -> dict:
     ancient_figures = _get_ancient_figures_with_vectors()
-    scored = _score_figures(ancient_figures, source_vector)
+    scored = _score_figures(ancient_figures, source_vector, source_confidence)
     top_3 = sorted(scored, key=lambda x: x["closeness"], reverse=True)[:3]
 
     figures_output = []
@@ -161,6 +166,7 @@ def reconstruct_history(action: str, source_vector: list) -> dict:
             "score": fig["score"],
             "closeness": fig["closeness"],
             "known_dimensions": fig["known_dimensions"],
+            "compared_dimensions": fig["compared_dimensions"],
             "dimensions": fig["dimensions"],
             "narrative": narrative,
         })

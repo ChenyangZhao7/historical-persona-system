@@ -38,7 +38,7 @@ def analyze_person(data: AnalyzeRequest):
             "confidence": json.loads(existing["confidence"]),
             "evidence": json.loads(existing["evidence"])
         }
-        matches = find_matches(profile["vector"], top_k=6)
+        matches = find_matches(profile["vector"], top_k=6, query_confidence=profile["confidence"])
         matches = [m for m in matches if m["name"].lower() != data.name.lower()]
         conn.close()
         return {"name": data.name, "profile": profile, "matches": matches[:5], "cached": True}
@@ -73,7 +73,7 @@ def analyze_person(data: AnalyzeRequest):
         ))
         conn.commit()
         conn.close()
-        matches = find_matches(profile["vector"], top_k=6)
+        matches = find_matches(profile["vector"], top_k=6, query_confidence=profile["confidence"])
         matches = [m for m in matches if m["name"].lower() != data.name.lower()]
         return {"name": data.name, "profile": profile, "matches": matches[:5], "reanalyzed": True}
 
@@ -99,6 +99,6 @@ def analyze_person(data: AnalyzeRequest):
     conn.commit()
     conn.close()
 
-    matches = find_matches(profile["vector"], top_k=6)
+    matches = find_matches(profile["vector"], top_k=6, query_confidence=profile["confidence"])
     matches = [m for m in matches if m["name"].lower() != data.name.lower()]
     return {"name": data.name, "profile": profile, "matches": matches[:5]}

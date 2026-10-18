@@ -8,6 +8,7 @@ from services.llm_json import parse_json_object, parse_vector
 from services.matcher import (
     cosine_similarity,
     dimension_breakdown,
+    covers_query,
     is_comparable,
     known_dimensions,
     mean_closeness,
@@ -61,7 +62,7 @@ def match_relic(description: str, material: str) -> dict:
         breakdown = dimension_breakdown(
             relic_vector, vector, relic_confidence, confidence
         )
-        if not is_comparable(breakdown):
+        if not is_comparable(breakdown) or not covers_query(breakdown, relic_confidence):
             continue
         results.append({
             "id": fig["id"],

@@ -94,21 +94,26 @@ def dimension_breakdown(
 def mean_closeness(breakdown: list, weights: list = None) -> float:
     """Weighted average agreement across the ten dimensions.
 
-    Each dimension contributes ``closeness * user_weight * figure_confidence``.
-    Dimensions the figure's profile knows nothing about (confidence 0) drop out
-    instead of counting as agreement. `weights` is the Match page's preset /
-    slider vector: raising a dimension makes it matter more to the score, which
-    is the only thing those controls can reasonably mean now that the headline
-    number is an absolute similarity rather than a ranking.
+    Each dimension contributes
+    ``closeness * user_weight * query_confidence * figure_confidence``.
+    A dimension only counts when *both* sides have evidence for it: the
+    figure's profile may not cover it, and the user's description may not have
+    mentioned it. Treating an unmentioned user dimension as a real 0.5 made a
+    short description measure "which figure is most average" rather than
+    "which figure resembles me". `weights` is the Match page's preset / slider
+    vector: raising a dimension makes it matter more to the score.
     """
     weighted = 0.0
     total_weight = 0.0
     for i, d in enumerate(breakdown):
         user_weight = weights[i] if weights else 1.0
-        confidence = d["figure_confidence"]
-        if confidence is None:
-            confidence = 1.0
-        weight = user_weight * confidence
+        figure_conf = d["figure_confidence"]
+        if figure_conf is None:
+            figure_conf = 1.0
+        query_conf = d["query_confidence"]
+        if query_conf is None:
+            query_conf = 1.0
+        weight = user_weight * figure_conf * query_conf
         weighted += d["closeness"] * weight
         total_weight += weight
     if total_weight == 0:
@@ -116,6 +121,33 @@ def mean_closeness(breakdown: list, weights: list = None) -> float:
         # unweighted average rather than reporting a meaningless 0.
         return 0.0 if weights is None else mean_closeness(breakdown)
     return round(weighted / total_weight, 4)
+
+
+def compared_dimensions(breakdown: list) -> int:
+    """Dimensions carrying evidence on both sides — what the score rests on."""
+    return sum(
+        1 for d in breakdown
+        if (d["figure_confidence"] is None or d["figure_confidence"] > 0)
+        and (d["query_confidence"] is None or d["query_confidence"] > 0)
+    )
+
+
+# A score built on two dimensions and a score built on eight are not
+# comparable: the thin one has far more room to look good by accident. A
+# candidate may miss one of the traits the caller described, but not a third of
+# them.
+COVERAGE_SHARE = 0.8
+
+
+def covers_query(breakdown: list, query_confidence: list = None) -> bool:
+    """Whether this candidate can be compared on most of what was described."""
+    if not query_confidence:
+        return True
+    described = sum(1 for c in query_confidence if c and c > 0)
+    if described == 0:
+        return False
+    required = max(1, round(described * COVERAGE_SHARE))
+    return compared_dimensions(breakdown) >= required
 
 
 def known_dimensions(breakdown: list) -> int:
@@ -147,6 +179,7 @@ def find_matches(
     top_k: int = 5,
     weights: list = None,
     with_breakdown: bool = True,
+    query_confidence: list = None,
 ) -> list:
     """Figures ordered by how closely their profile matches `query_vector`.
 
@@ -154,6 +187,10 @@ def find_matches(
     the list order always agrees with the figures shown next to it. Cosine over
     uncentred 0..1 vectors clusters near 0.95 for almost every pair, so it is
     carried in the payload for diagnostics only and never displayed.
+
+    `query_confidence` is the caller's own per-dimension confidence. Without
+    it, dimensions the caller never described would be scored as if they were
+    real values.
     """
     if weights is None or len(weights) != 10:
         weights = DEFAULT_WEIGHTS
@@ -167,8 +204,10 @@ def find_matches(
         weighted_query = [q * c for q, c in zip(query_vector, combined)]
         weighted_profile = [v * c for v, c in zip(vector, combined)]
         score = cosine_similarity(weighted_query, weighted_profile)
-        breakdown = dimension_breakdown(query_vector, vector, figure_confidence=confidence)
-        if not is_comparable(breakdown):
+        breakdown = dimension_breakdown(
+            query_vector, vector, query_confidence, confidence
+        )
+        if not is_comparable(breakdown) or not covers_query(breakdown, query_confidence):
             continue
         results.append({
             "id": profile["id"],
@@ -178,6 +217,7 @@ def find_matches(
             "score": round(score, 4),
             "closeness": mean_closeness(breakdown, weights),
             "known_dimensions": known_dimensions(breakdown),
+            "compared_dimensions": compared_dimensions(breakdown),
             "_breakdown": breakdown,
         })
 

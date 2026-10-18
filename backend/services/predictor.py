@@ -4,7 +4,9 @@ from database import connection
 from services.llm import complete
 from services.matcher import (
     cosine_similarity,
+    compared_dimensions,
     dimension_breakdown,
+    covers_query,
     is_comparable,
     known_dimensions,
     mean_closeness,
@@ -48,22 +50,23 @@ def _get_all_figures_with_vectors() -> list:
     return [dict(row) for row in rows]
 
 
-def _score_figures(figures: list, user_vector: list) -> list:
+def _score_figures(figures: list, user_vector: list, user_confidence: list = None) -> list:
     """Per-dimension agreement for every figure with a complete enough profile."""
     scored = []
     for fig in figures:
         vec = json.loads(fig["vector"])
         confidence = json.loads(fig["confidence"])
         breakdown = dimension_breakdown(
-            user_vector, vec, figure_confidence=confidence
+            user_vector, vec, user_confidence, confidence
         )
-        if not is_comparable(breakdown):
+        if not is_comparable(breakdown) or not covers_query(breakdown, user_confidence):
             continue
         scored.append({
             **fig,
             "score": round(cosine_similarity(user_vector, vec), 4),
             "closeness": mean_closeness(breakdown),
             "known_dimensions": known_dimensions(breakdown),
+            "compared_dimensions": compared_dimensions(breakdown),
             "dimensions": breakdown,
         })
     return scored
@@ -83,9 +86,11 @@ def _generate_response(figure: dict, question: str) -> str:
     return complete(prompt, max_tokens=800)
 
 
-def get_historical_responses(user_vector: list, question: str) -> dict:
+def get_historical_responses(
+    user_vector: list, question: str, user_confidence: list = None
+) -> dict:
     all_figures = _get_all_figures_with_vectors()
-    scored = _score_figures(all_figures, user_vector)
+    scored = _score_figures(all_figures, user_vector, user_confidence)
 
     # Periods follow the same buckets as figures.period: ancient ends with the
     # fall of the Western Roman Empire, modern starts with the October Revolution.
@@ -111,6 +116,7 @@ def get_historical_responses(user_vector: list, question: str) -> dict:
             "score": fig["score"],
             "closeness": fig["closeness"],
             "known_dimensions": fig["known_dimensions"],
+            "compared_dimensions": fig["compared_dimensions"],
             "dimensions": fig["dimensions"],
             "type": fig["type"],
             "response": response_text,
