@@ -14,6 +14,10 @@ node_modules/
 # Local database snapshots taken by backend/scripts/migrate_dataset.py
 backend/data/backup/
 
+# Wikidata lookup cache written by backend/scripts/backfill_era.py.
+# Regenerated on demand; committing it only adds churn.
+backend/data/era_cache.json
+
 # Claude Code worktrees
 .claude/
 
