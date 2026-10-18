@@ -2,7 +2,13 @@ import json
 
 from database import connection
 from services.llm import complete
-from services.matcher import cosine_similarity
+from services.matcher import (
+    cosine_similarity,
+    dimension_breakdown,
+    is_comparable,
+    known_dimensions,
+    mean_closeness,
+)
 
 FIGURE_PROMPT = """You are {name}, speaking directly to someone who has asked you a question.
 
@@ -33,7 +39,7 @@ def _get_all_figures_with_vectors() -> list:
     with connection() as conn:
         rows = conn.execute(
             """
-            SELECT f.id, f.name, f.era, f.period, f.raw_text, p.vector
+            SELECT f.id, f.name, f.era, f.period, f.raw_text, p.vector, p.confidence
             FROM figures f
             JOIN profiles p ON p.figure_id = f.id
             WHERE f.era IS NOT NULL
@@ -42,14 +48,25 @@ def _get_all_figures_with_vectors() -> list:
     return [dict(row) for row in rows]
 
 
-def _top_n_by_similarity(figures: list, user_vector: list, n: int) -> list:
+def _score_figures(figures: list, user_vector: list) -> list:
+    """Per-dimension agreement for every figure with a complete enough profile."""
     scored = []
     for fig in figures:
         vec = json.loads(fig["vector"])
-        score = cosine_similarity(user_vector, vec)
-        scored.append({**fig, "score": round(score, 4)})
-    scored.sort(key=lambda x: x["score"], reverse=True)
-    return scored[:n]
+        confidence = json.loads(fig["confidence"])
+        breakdown = dimension_breakdown(
+            user_vector, vec, figure_confidence=confidence
+        )
+        if not is_comparable(breakdown):
+            continue
+        scored.append({
+            **fig,
+            "score": round(cosine_similarity(user_vector, vec), 4),
+            "closeness": mean_closeness(breakdown),
+            "known_dimensions": known_dimensions(breakdown),
+            "dimensions": breakdown,
+        })
+    return scored
 
 
 def _generate_response(figure: dict, question: str) -> str:
@@ -68,12 +85,15 @@ def _generate_response(figure: dict, question: str) -> str:
 
 def get_historical_responses(user_vector: list, question: str) -> dict:
     all_figures = _get_all_figures_with_vectors()
+    scored = _score_figures(all_figures, user_vector)
 
-    ancient = [f for f in all_figures if f["era"] is not None and f["era"] < 1800]
-    modern = [f for f in all_figures if f["era"] is not None and f["era"] >= 1800]
+    # Periods follow the same buckets as figures.period: ancient ends with the
+    # fall of the Western Roman Empire, modern starts with the October Revolution.
+    ancient = [f for f in scored if f["era"] < 476]
+    modern = [f for f in scored if f["era"] >= 1917]
 
-    top_ancient = _top_n_by_similarity(ancient, user_vector, 2)
-    top_modern = _top_n_by_similarity(modern, user_vector, 2)
+    top_ancient = sorted(ancient, key=lambda x: x["closeness"], reverse=True)[:2]
+    top_modern = sorted(modern, key=lambda x: x["closeness"], reverse=True)[:2]
 
     selected = [
         {**fig, "type": "ancient"} for fig in top_ancient
@@ -89,6 +109,9 @@ def get_historical_responses(user_vector: list, question: str) -> dict:
             "era": fig["era"],
             "period": fig["period"],
             "score": fig["score"],
+            "closeness": fig["closeness"],
+            "known_dimensions": fig["known_dimensions"],
+            "dimensions": fig["dimensions"],
             "type": fig["type"],
             "response": response_text,
         })

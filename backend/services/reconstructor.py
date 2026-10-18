@@ -2,7 +2,13 @@ import json
 
 from database import connection
 from services.llm import complete
-from services.matcher import cosine_similarity
+from services.matcher import (
+    cosine_similarity,
+    dimension_breakdown,
+    is_comparable,
+    known_dimensions,
+    mean_closeness,
+)
 
 RECONSTRUCT_PROMPT = """You are a historian writing a passage for an academic history book.
 
@@ -37,62 +43,87 @@ Write a plausible historical narrative, in the style of a history book passage, 
 """
 
 
+def _era_label(era: int) -> str:
+    return f"{abs(era)} BC" if era < 0 else f"{era} AD"
+
+
 def _era_context(era: int) -> dict:
-    if era < -500:
+    """Material world for the five periods stored in figures.period."""
+    label = _era_label(era)
+
+    if era < 476:
         return {
-            "era_label": f"{abs(era)} BC",
+            "era_label": label,
             "civilization": "an ancient civilisation shaped by oral tradition, divine kingship, and city-states",
             "region": "the ancient Near East, Mediterranean, or river valley civilisations",
             "social_structure": "rigid hierarchies of priests, warriors, and peasants under a monarch or council",
             "gender_context": "a world where gender roles were strictly enforced by custom, religion, and law",
         }
-    elif era < 500:
-        return {
-            "era_label": f"{abs(era)} BC/AD",
-            "civilization": "the classical world of emerging empires, philosophy, and expanding trade networks",
-            "region": "the Mediterranean basin, Persia, China, or the Indian subcontinent",
-            "social_structure": "a society of citizen-soldiers, slaves, merchants, and aristocrats under republic or empire",
-            "gender_context": "a world where women's public roles were heavily circumscribed except in specific religious or royal contexts",
-        }
     elif era < 1500:
         return {
-            "era_label": f"{era} AD",
+            "era_label": label,
             "civilization": "the medieval world shaped by religious authority, feudal obligation, and limited literacy",
             "region": "medieval Europe, the Islamic world, sub-Saharan Africa, or dynastic East Asia",
             "social_structure": "a feudal or theocratic order of lords, clergy, artisans, and serfs",
             "gender_context": "a world where gender determined almost every aspect of public, legal, and domestic life",
         }
-    else:
+    elif era < 1917:
         return {
-            "era_label": f"{era} AD",
-            "civilization": "the early modern world of print culture, nation-states, and emerging industrial change",
-            "region": "early modern Europe, the Ottoman Empire, Mughal India, or the Americas",
-            "social_structure": "a society in transition, with merchant classes, colonial structures, and religious reform movements",
-            "gender_context": "a world where gender norms were being contested but still profoundly constrained public life",
+            "era_label": label,
+            "civilization": "the early modern and industrial world of print culture, nation-states, and mechanised production",
+            "region": "early modern and industrial Europe, the Ottoman Empire, Mughal India, Qing China, or the Americas",
+            "social_structure": "a society in transition, with merchant and industrial classes, colonial structures, and reforming states",
+            "gender_context": "a world where gender norms were contested but still profoundly constrained public life",
         }
+    elif era < 1945:
+        return {
+            "era_label": label,
+            "civilization": "the industrial and interwar world of mass politics, total war, and ideological conflict",
+            "region": "an industrialised and imperial world order, from Europe and North America to colonial Asia and Africa",
+            "social_structure": "a society of mass parties, industrial labour, colonial administration, and expanding state power",
+            "gender_context": "a world where women's suffrage and wartime labour were beginning to reshape public roles",
+        }
+    return {
+        "era_label": label,
+        "civilization": "the contemporary world of decolonisation, cold-war rivalry, digital technology, and globalisation",
+        "region": "a globally connected world of nation-states, international institutions, and urban economies",
+        "social_structure": "a society of mass education, service economies, global supply chains, and contested welfare states",
+        "gender_context": "a world where gender roles were formally equal in law but still uneven in practice",
+    }
 
 
 def _get_ancient_figures_with_vectors() -> list:
     with connection() as conn:
         rows = conn.execute(
             """
-            SELECT f.id, f.name, f.era, f.period, f.raw_text, p.vector
+            SELECT f.id, f.name, f.era, f.period, f.raw_text, p.vector, p.confidence
             FROM figures f
             JOIN profiles p ON p.figure_id = f.id
-            WHERE f.era IS NOT NULL AND f.era < 1800
+            WHERE f.era IS NOT NULL AND f.era < 476
             """
         ).fetchall()
     return [dict(row) for row in rows]
 
 
-def _top_n_by_similarity(figures: list, source_vector: list, n: int) -> list:
+def _score_figures(figures: list, source_vector: list) -> list:
+    """Per-dimension agreement for every figure with a complete enough profile."""
     scored = []
     for fig in figures:
         vec = json.loads(fig["vector"])
-        score = cosine_similarity(source_vector, vec)
-        scored.append({**fig, "score": round(score, 4)})
-    scored.sort(key=lambda x: x["score"], reverse=True)
-    return scored[:n]
+        confidence = json.loads(fig["confidence"])
+        breakdown = dimension_breakdown(
+            source_vector, vec, figure_confidence=confidence
+        )
+        if not is_comparable(breakdown):
+            continue
+        scored.append({
+            **fig,
+            "score": round(cosine_similarity(source_vector, vec), 4),
+            "closeness": mean_closeness(breakdown),
+            "known_dimensions": known_dimensions(breakdown),
+            "dimensions": breakdown,
+        })
+    return scored
 
 
 def _generate_narrative(figure: dict, action: str) -> str:
@@ -117,7 +148,8 @@ def _generate_narrative(figure: dict, action: str) -> str:
 
 def reconstruct_history(action: str, source_vector: list) -> dict:
     ancient_figures = _get_ancient_figures_with_vectors()
-    top_3 = _top_n_by_similarity(ancient_figures, source_vector, 3)
+    scored = _score_figures(ancient_figures, source_vector)
+    top_3 = sorted(scored, key=lambda x: x["closeness"], reverse=True)[:3]
 
     figures_output = []
     for fig in top_3:
@@ -127,6 +159,9 @@ def reconstruct_history(action: str, source_vector: list) -> dict:
             "era": fig["era"],
             "period": fig["period"],
             "score": fig["score"],
+            "closeness": fig["closeness"],
+            "known_dimensions": fig["known_dimensions"],
+            "dimensions": fig["dimensions"],
             "narrative": narrative,
         })
 

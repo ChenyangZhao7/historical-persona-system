@@ -28,6 +28,33 @@ Each dimension also carries a **confidence** score. Low-confidence dimensions
 contribute less to matching, and are imputed from behaviourally similar figures
 when a chat persona or a reconstruction needs a complete vector.
 
+## How similarity is reported
+
+A match is reported as **one number plus its breakdown**, both absolute — how
+similar this figure is to what you described:
+
+| Field | Meaning |
+|-------|---------|
+| `closeness` | Confidence-weighted average of `1 - \|difference\|` across the ten dimensions. This is the only similarity number the interface shows. |
+| `dimensions` | The same figure per dimension: both values, the gap, the agreement, and the figure's confidence in that dimension. |
+| `known_dimensions` | How many of the ten dimensions the figure's profile actually covers. |
+
+Two things are deliberately **not** shown:
+
+- **Raw cosine** — the "95% behavioural similarity" of earlier versions. Over
+  uncentred 0..1 vectors it sits near 0.95 for almost every pair: the median
+  figure in the corpus scored about 0.95 against an arbitrary profile, so it
+  could not separate a strong match from a weak one.
+- **Rank or percentile** — "top 3% of 447 figures" is a property of the corpus,
+  not of the pair. Import another thousand figures and the same two profiles
+  would print a different number.
+
+Matching is ordered by `closeness`, so the list order always agrees with the
+figures printed next to it. Figures covering fewer than `MIN_KNOWN_DIMENSIONS`
+(6) of the ten dimensions are left out rather than ranked on a mostly empty
+profile; six currently fall below the line. They stay in the database and on the
+Database page.
+
 ## Features
 
 | Page | What it does |
@@ -108,13 +135,37 @@ FastAPI then serves the built frontend from the same origin.
 
 ## The dataset
 
-`backend/data/historical.db` ships with **452 figures** and their vectors.
+`backend/data/historical.db` ships with **447 figures** and their vectors.
 
-- **50** have a curated `era` and `period` (`ancient` or `modern`). These are the
-  pool used by Predict, Reconstruct and the era benchmark.
-- **402** were extracted on demand and carry `era = NULL`, `period = "unknown"`.
-  They are matched and browseable, but deliberately **excluded** from anything
-  that needs a century rather than guessed into one.
+- **443** carry a birth year (`era`) and a `period`, taken from Wikidata's
+  `P569` and bucketed by the historiography below.
+- **4** could not be dated (no birth date on Wikidata) and stay
+  `era = NULL`, `period = "unknown"`. They are matched and browseable, but
+  excluded from anything that needs a century rather than guessed into one.
+
+Period buckets, applied to the birth year:
+
+| `period` | 中文 | Birth year | Boundary |
+|---|---|---|---|
+| `ancient` | 古代 | < 476 | fall of the Western Roman Empire |
+| `medieval` | 中世纪 | 476 – 1499 | |
+| `early_modern` | 近代 | 1500 – 1916 | Age of Discovery → October Revolution |
+| `modern` | 现代 | 1917 – 1944 | October Revolution → end of WWII |
+| `contemporary` | 当代 | 1945 – | Cold War to the present |
+
+`scripts/backfill_era.py` rebuilds both columns from Wikidata. It is a dry run
+unless you pass `--apply`, caches API responses in `data/era_cache.json`, and
+backs the database up before writing:
+
+```bash
+cd backend
+python scripts/backfill_era.py            # report only
+python scripts/backfill_era.py --apply    # write
+```
+
+Predict contrasts the behavioural nearest neighbour from the `ancient` bucket
+with one from `modern` + `contemporary` (birth year ≥ 1917). Reconstruct draws
+its candidates from `ancient` only.
 
 To grow the corpus:
 
@@ -171,11 +222,11 @@ historical-persona-system/
 │   ├── services/               # extractor, matcher, predictor, reconstructor, chat …
 │   ├── scripts/                # dataset migration
 │   ├── tests/                  # pytest suite
-│   └── data/historical.db      # 452 figures with vectors
+│   └── data/historical.db      # 447 figures with vectors
 ├── frontend/
 │   └── src/
 │       ├── pages/              # one component per feature
-│       ├── components/         # DraggableRadar, Skeleton
+│       ├── components/         # DraggableRadar, Skeleton, Similarity
 │       └── services/           # IndexedDB vector cache, client-side similarity
 ├── scripts/run-backend.mjs     # cross-platform dev launcher
 └── render.yaml                 # single-service deploy
@@ -189,7 +240,7 @@ npm test                                       # same as: cd backend && python -
 ```
 
 The suite covers the similarity maths, the imputer, LLM-output validation and the
-HTTP layer with mocked dependencies. It never calls Anthropic.
+HTTP layer with mocked dependencies. It never calls the LLM provider.
 
 ## Cost and keys
 

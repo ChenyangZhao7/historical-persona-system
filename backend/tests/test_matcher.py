@@ -6,7 +6,17 @@ from unittest.mock import patch, MagicMock
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from services.matcher import cosine_similarity, weighted_cosine_similarity, find_matches
+from services.matcher import (
+    DIMENSIONS,
+    MIN_KNOWN_DIMENSIONS,
+    cosine_similarity,
+    weighted_cosine_similarity,
+    find_matches,
+    dimension_breakdown,
+    is_comparable,
+    mean_closeness,
+    known_dimensions,
+)
 
 
 # ── cosine_similarity ──────────────────────────────────────────────────────────
@@ -124,3 +134,144 @@ def test_find_matches_wrong_length_weights_uses_default(mock_profiles):
     # 5-element weights should fall back to default (no crash)
     results = find_matches(query, top_k=3, weights=[1.0] * 5)
     assert len(results) == 3
+
+def test_cosine_mismatched_lengths_raises():
+    with pytest.raises(ValueError):
+        cosine_similarity([0.5] * 3, [0.5] * 10)
+
+def test_weighted_cosine_mismatched_weights_raises():
+    with pytest.raises(ValueError):
+        weighted_cosine_similarity([0.5] * 10, [0.5] * 10, [1.0] * 5)
+
+
+# ── dimension_breakdown ────────────────────────────────────────────────────────
+
+def test_dimension_breakdown_has_one_row_per_dimension():
+    breakdown = dimension_breakdown([0.5] * 10, [0.5] * 10)
+    assert len(breakdown) == 10
+    assert [d["dimension"] for d in breakdown] == DIMENSIONS
+
+def test_dimension_breakdown_identical_vectors_agree_fully():
+    breakdown = dimension_breakdown([0.4] * 10, [0.4] * 10)
+    assert all(d["closeness"] == 1.0 for d in breakdown)
+    assert all(d["gap"] == 0.0 for d in breakdown)
+
+def test_dimension_breakdown_closeness_is_one_minus_gap():
+    breakdown = dimension_breakdown([0.9] * 10, [0.3] * 10)
+    assert all(d["gap"] == pytest.approx(0.6) for d in breakdown)
+    assert all(d["closeness"] == pytest.approx(0.4) for d in breakdown)
+
+def test_dimension_breakdown_keeps_original_values():
+    breakdown = dimension_breakdown([0.9] * 10, [0.3] * 10)
+    assert breakdown[0]["query"] == 0.9
+    assert breakdown[0]["figure"] == 0.3
+
+
+# ── mean_closeness / known_dimensions ─────────────────────────────────────────
+
+def test_mean_closeness_ignores_undocumented_dimensions():
+    # Two dimensions with evidence that agree exactly, eight the profile knows
+    # nothing about. Counting those eight as agreement would have reported 0.6.
+    confidence = [1.0, 1.0] + [0.0] * 8
+    breakdown = dimension_breakdown([0.5] * 10, [0.5, 0.5] + [0.0] * 8,
+                                    figure_confidence=confidence)
+    assert mean_closeness(breakdown) == pytest.approx(1.0)
+
+def test_mean_closeness_is_zero_when_nothing_is_documented():
+    breakdown = dimension_breakdown([0.5] * 10, [0.5] * 10,
+                                    figure_confidence=[0.0] * 10)
+    assert mean_closeness(breakdown) == 0.0
+
+def test_mean_closeness_without_confidence_weights_every_dimension_equally():
+    breakdown = dimension_breakdown([0.5] * 10, [0.4] * 10)
+    assert mean_closeness(breakdown) == pytest.approx(0.9)
+
+def test_mean_closeness_respects_user_weights():
+    breakdown = dimension_breakdown([0.5] * 10, [0.0] * 10)  # 0.5 agreement everywhere
+    breakdown[0] = {**breakdown[0], "closeness": 1.0}          # except dimension 0
+    assert mean_closeness(breakdown) == pytest.approx(0.55)
+    assert mean_closeness(breakdown, [10] + [1] * 9) > mean_closeness(breakdown)
+
+@patch("services.matcher.get_all_profiles")
+def test_find_matches_weights_change_the_order(mock_profiles):
+    mock_profiles.return_value = [
+        {"id": 1, "name": "Front-half", "era": 1, "period": "x",
+         "vector": json.dumps([0.5] * 5 + [0.0] * 5), "confidence": json.dumps([0.9] * 10)},
+        {"id": 2, "name": "Back-half", "era": 1, "period": "x",
+         "vector": json.dumps([0.0] * 5 + [0.5] * 5), "confidence": json.dumps([0.9] * 10)},
+    ]
+    query = [0.5] * 10
+    front = find_matches(query, top_k=2, weights=[2, 2, 2, 2, 2, 0, 0, 0, 0, 0])
+    back = find_matches(query, top_k=2, weights=[0, 0, 0, 0, 0, 2, 2, 2, 2, 2])
+    assert front[0]["name"] == "Front-half"
+    assert back[0]["name"] == "Back-half"
+
+def test_known_dimensions_counts_only_documented_ones():
+    confident = dimension_breakdown([0.5] * 10, [0.5] * 10, figure_confidence=[0.9] * 10)
+    assert known_dimensions(confident) == 10
+    partial = dimension_breakdown([0.5] * 10, [0.5] * 10,
+                                  figure_confidence=[0.9, 0.8] + [0.0] * 8)
+    assert known_dimensions(partial) == 2
+
+
+# ── coverage ─────────────────────────────────────────────────────────────────
+
+def test_is_comparable_requires_most_dimensions():
+    complete = dimension_breakdown([0.5] * 10, [0.5] * 10, figure_confidence=[0.9] * 10)
+    assert is_comparable(complete)
+
+    barely = dimension_breakdown([0.5] * 10, [0.5] * 10,
+                                 figure_confidence=[0.9, 0.9, 0.9, 0.9, 0.9, 0.9] + [0.0] * 4)
+    assert known_dimensions(barely) == MIN_KNOWN_DIMENSIONS
+    assert is_comparable(barely)
+
+    too_thin = dimension_breakdown([0.5] * 10, [0.5] * 10,
+                                   figure_confidence=[0.9, 0.9] + [0.0] * 8)
+    assert not is_comparable(too_thin)
+
+def test_find_matches_skips_incomplete_profiles():
+    query = [0.5] * 10
+    # Caesar keeps his profile; Gandhi has evidence on only two dimensions.
+    profiles = [
+        dict(MOCK_PROFILES[0]),
+        {**MOCK_PROFILES[1], "confidence": json.dumps([0.9, 0.9] + [0.0] * 8)},
+    ]
+    with patch("services.matcher.get_all_profiles", return_value=profiles):
+        results = find_matches(query, top_k=5)
+    assert [r["name"] for r in results] == ["Caesar"]
+
+
+# ── ordering ─────────────────────────────────────────────────────────────────
+
+@patch("services.matcher.get_all_profiles", return_value=MOCK_PROFILES)
+def test_find_matches_sorted_by_closeness_not_cosine(mock_profiles):
+    # 0.4 against every dimension while the query is 0.5 in all of them:
+    # a flat, well-understood profile.
+    results = find_matches([0.5] * 10, top_k=3)
+    by_closeness = sorted(results, key=lambda r: r["closeness"], reverse=True)
+    assert [r["name"] for r in results] == [r["name"] for r in by_closeness]
+
+@patch("services.matcher.get_all_profiles", return_value=MOCK_PROFILES)
+def test_find_matches_reports_no_corpus_relative_fields(mock_profiles):
+    r = find_matches([0.5] * 10, top_k=1)[0]
+    assert "percentile" not in r
+    assert "rank" not in r
+    assert "total" not in r
+
+
+# ── find_matches output ───────────────────────────────────────────────────────
+
+@patch("services.matcher.get_all_profiles", return_value=MOCK_PROFILES)
+def test_find_matches_attaches_ten_dimensions(mock_profiles):
+    r = find_matches([0.5] * 10, top_k=1)[0]
+    assert len(r["dimensions"]) == 10
+    assert r["closeness"] == pytest.approx(
+        sum(d["closeness"] for d in r["dimensions"]) / 10, abs=1e-3
+    )
+    assert r["known_dimensions"] == 10
+
+@patch("services.matcher.get_all_profiles", return_value=MOCK_PROFILES)
+def test_find_matches_can_omit_the_breakdown(mock_profiles):
+    results = find_matches([0.5] * 10, top_k=2, with_breakdown=False)
+    assert all("dimensions" not in r for r in results)
+    assert all("closeness" in r for r in results)

@@ -3,14 +3,24 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from database import get_connection
-from services.matcher import cosine_similarity
+from services.matcher import (
+    cosine_similarity,
+    dimension_breakdown,
+    is_comparable,
+    known_dimensions,
+    mean_closeness,
+)
 
 router = APIRouter(prefix="/reverse", tags=["reverse"])
 
 @router.get("/{figure_name}")
-def reverse_match(figure_name: str, top_k: int = 5):
+def reverse_match(
+    figure_name: str,
+    # negative top_k used to return len(results)-1 figures via results[:-1]
+    top_k: int = Query(5, ge=1, le=50),
+):
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -46,15 +56,23 @@ def reverse_match(figure_name: str, top_k: int = 5):
         weighted_a = [v * c for v, c in zip(target_vector, combined_confidence)]
         weighted_b = [v * c for v, c in zip(vector, combined_confidence)]
         score = cosine_similarity(weighted_a, weighted_b)
+        breakdown = dimension_breakdown(
+            target_vector, vector, target_confidence, confidence
+        )
+        if not is_comparable(breakdown):
+            continue
         results.append({
             "id": row["id"],
             "name": row["name"],
             "era": row["era"],
             "period": row["period"],
-            "score": round(score, 4)
+            "score": round(score, 4),
+            "closeness": mean_closeness(breakdown),
+            "known_dimensions": known_dimensions(breakdown),
+            "dimensions": breakdown,
         })
 
-    results.sort(key=lambda x: x["score"], reverse=True)
+    results.sort(key=lambda x: x["closeness"], reverse=True)
     return {
         "query": figure_name,
         "matches": results[:top_k]

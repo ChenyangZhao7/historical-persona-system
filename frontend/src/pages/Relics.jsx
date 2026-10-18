@@ -1,6 +1,8 @@
-﻿import { useState } from "react"
+import { useState } from "react"
 import axios from "axios"
 import { API } from "../App"
+import { formatEra } from "../services/format"
+import { MatchScore } from "../components/Similarity"
 
 const S = {
   desc: { fontSize: 13, color: "var(--text3)", marginBottom: 20, lineHeight: 1.7 },
@@ -73,10 +75,9 @@ export default function Relics() {
             <div key={i} className={`card-hover fade-up fade-up-delay-${i + 1}`} style={S.card}>
               <div style={S.cardRow}>
                 <span style={S.name}>{match.name}</span>
-                <span style={S.era}>{match.era < 0 ? `${Math.abs(match.era)} BC` : `${match.era} AD`}</span>
+                <span style={S.era}>{formatEra(match.era)}</span>
               </div>
-              <div style={S.bar}><div style={S.fill(match.score * 100)} /></div>
-              <div style={S.sim}>{(match.score * 100).toFixed(1)}% behavioural similarity</div>
+              <MatchScore match={match} aLabel="Relic" bLabel="Figure" subject="the relic" defaultOpen={i === 0} />
             </div>
           ))}
         </div>

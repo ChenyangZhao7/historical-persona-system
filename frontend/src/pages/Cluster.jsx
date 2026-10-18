@@ -2,6 +2,7 @@
 import axios from "axios"
 import { API } from "../App"
 import { loadVectors, saveVectors } from "../services/vectorStore"
+import { formatEra } from "../services/format"
 
 // Mid-tone colours so a dot is legible on both the light and the dark theme.
 const PERIOD_COLORS = {
@@ -13,20 +14,15 @@ const PERIOD_COLORS = {
   unknown: "#9ca3af",
 }
 
-// The backend stores lowercase periods ("ancient", "modern", "unknown"), so the
-// old capitalised keys never matched and every dot fell through to the default.
+// The backend stores lowercase keys; "early_modern" is normalised to
+// "early modern" so it matches the colour table below.
 function getColor(period) {
-  const key = (period || "").trim().toLowerCase()
+  const key = (period || "").trim().toLowerCase().replace(/_/g, " ")
   if (PERIOD_COLORS[key]) return PERIOD_COLORS[key]
   for (const [name, color] of Object.entries(PERIOD_COLORS)) {
     if (key.includes(name)) return color
   }
   return PERIOD_COLORS.unknown
-}
-
-function formatEra(era) {
-  if (era === null || era === undefined || Number.isNaN(era)) return "era unknown"
-  return era < 0 ? `${Math.abs(era)} BC` : `${era} AD`
 }
 
 function pca2d(vectors) {

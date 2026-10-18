@@ -60,11 +60,11 @@ export default function Benchmark() {
       .finally(() => setLoading(false))
   }, [])
 
-  const filtered = era === "ancient"
-    ? allFigures.filter(f => f.era != null && f.era < 1800)
-    : era === "modern"
-    ? allFigures.filter(f => f.era != null && f.era >= 1800)
+  const filtered = era
+    ? allFigures.filter(f => f.period === era)
     : allFigures
+
+  const countFor = p => allFigures.filter(f => f.period === p).length
 
   const result = computeBenchmark(filtered)
 
@@ -85,8 +85,12 @@ export default function Benchmark() {
       <div style={S.row}>
         <select value={era} onChange={e => setEra(e.target.value)} style={{ flex: 1 }}>
           <option value="">All eras ({allFigures.length} figures)</option>
-          <option value="ancient">Ancient · before 1800 ({allFigures.filter(f => f.era != null && f.era < 1800).length})</option>
-          <option value="modern">Modern · after 1800 ({allFigures.filter(f => f.era != null && f.era >= 1800).length})</option>
+          <option value="ancient">古代 Ancient · before 476 ({countFor("ancient")})</option>
+          <option value="medieval">中世纪 Medieval · 476–1499 ({countFor("medieval")})</option>
+          <option value="early_modern">近代 Early modern · 1500–1916 ({countFor("early_modern")})</option>
+          <option value="modern">现代 Modern · 1917–1944 ({countFor("modern")})</option>
+          <option value="contemporary">当代 Contemporary · 1945+ ({countFor("contemporary")})</option>
+          <option value="unknown">Unclassified ({countFor("unknown")})</option>
         </select>
       </div>
 

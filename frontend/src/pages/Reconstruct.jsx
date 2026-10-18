@@ -1,6 +1,8 @@
-﻿import { useState, useEffect } from "react"
+import { useState, useEffect } from "react"
 import axios from "axios"
 import { API } from "../App"
+import { formatEra } from "../services/format"
+import { MatchScore } from "../components/Similarity"
 
 const S = {
   desc: { fontSize: 13, color: "var(--text3)", marginBottom: 20, lineHeight: 1.7 },
@@ -210,15 +212,10 @@ export default function Reconstruct() {
                     <span style={{ fontSize: 11, color: "var(--text4)", marginLeft: 8 }}>{fig.period}</span>
                   )}
                 </div>
-                <span style={S.figureEra}>
-                  {fig.era < 0 ? `${Math.abs(fig.era)} BC` : `${fig.era} AD`}
-                </span>
+                <span style={S.figureEra}>{formatEra(fig.era)}</span>
               </div>
-              <div style={{ padding: "8px 16px 4px" }}>
-                <div style={S.scoreBar}><div style={S.scoreFill(fig.score * 100)} /></div>
-                <div style={{ fontSize: 11, color: "var(--text4)", marginTop: 4 }}>
-                  {(fig.score * 100).toFixed(1)}% behavioural similarity
-                </div>
+              <div style={{ padding: "8px 16px 10px" }}>
+                <MatchScore match={fig} aLabel="You" bLabel="Them" />
               </div>
               <div style={S.fabricatedLabel}>Fabricated History</div>
               <div style={S.narrative}>{fig.narrative}</div>

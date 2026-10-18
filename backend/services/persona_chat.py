@@ -8,7 +8,7 @@ from services.llm import complete
 from services.figure_resolver import resolve_figure
 from imputer import impute_profile
 
-CHAT_PROMPT = """You are {name}, the historical figure who lived around {era}.
+CHAT_PROMPT = """You are {name}, a historical figure who lived in {era}.
 
 Your behavioural profile (some dimensions inferred from similar figures):
 - Reaction to oppression: {d0}
@@ -30,6 +30,13 @@ Speak in first person. Be concise but characterful.
 Do not break character. Do not mention your behavioural scores.
 """
 
+def _era_label(era: int | None) -> str:
+    """`era` is a birth year; NULL means the figure could not be dated."""
+    if era is None:
+        return "an uncertain period"
+    return f"{abs(era)} BC" if era < 0 else f"{era} AD"
+
+
 def persona_chat(name: str, message: str) -> dict:
     figure = resolve_figure(name)
 
@@ -44,7 +51,7 @@ def persona_chat(name: str, message: str) -> dict:
     safe_raw_text = (figure["raw_text"] or "").replace("{", "{{").replace("}", "}}")
     system_prompt = CHAT_PROMPT.format(
         name=figure["name"],
-        era=figure["era"],
+        era=_era_label(figure["era"]),
         raw_text=safe_raw_text,
         d0=vector[0], d1=vector[1], d2=vector[2],
         d3=vector[3], d4=vector[4], d5=vector[5],

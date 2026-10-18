@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react"
 import axios from "axios"
 import { API } from "../App"
+import { formatEra } from "../services/format"
+import { MatchScore } from "../components/Similarity"
 
 const S = {
   desc: { fontSize: 13, color: "var(--text3)", marginBottom: 20, lineHeight: 1.7 },
@@ -137,7 +139,7 @@ export default function Predict() {
         <div style={{ marginTop: 40 }}>
           {ancient.length > 0 && (
             <>
-              <div style={S.sectionLabel}>Ancient figures · before 1800</div>
+              <div style={S.sectionLabel}>Ancient figures · before 476 AD</div>
               {ancient.map((fig, i) => (
                 <FigureCard key={i} fig={fig} delay={i + 1} />
               ))}
@@ -145,7 +147,7 @@ export default function Predict() {
           )}
           {modern.length > 0 && (
             <>
-              <div style={S.sectionLabel}>Modern figures · after 1800</div>
+              <div style={S.sectionLabel}>Modern figures · after 1917</div>
               {modern.map((fig, i) => (
                 <FigureCard key={i} fig={fig} delay={ancient.length + i + 1} />
               ))}
@@ -158,7 +160,6 @@ export default function Predict() {
 }
 
 function FigureCard({ fig, delay }) {
-  const eraStr = fig.era < 0 ? `${Math.abs(fig.era)} BC` : `${fig.era} AD`
   return (
     <div className={`fade-up fade-up-delay-${Math.min(delay, 5)}`} style={S.figureCard}>
       <div style={S.figureHeader}>
@@ -166,13 +167,10 @@ function FigureCard({ fig, delay }) {
           <span style={S.figureName}>{fig.name}</span>
           <span style={S.tag(fig.type)}>{fig.type}</span>
         </div>
-        <span style={S.figureEra}>{eraStr}</span>
+        <span style={S.figureEra}>{formatEra(fig.era)}</span>
       </div>
-      <div style={{ padding: "10px 16px 4px" }}>
-        <div style={S.scoreBar}><div style={S.scoreFill(fig.score * 100)} /></div>
-        <div style={{ fontSize: 11, color: "var(--text4)", marginTop: 4 }}>
-          {(fig.score * 100).toFixed(1)}% behavioural similarity
-        </div>
+      <div style={{ padding: "10px 16px 10px" }}>
+        <MatchScore match={fig} aLabel="You" bLabel="Them" />
       </div>
       <div style={S.response}>{fig.response}</div>
     </div>

@@ -1,6 +1,7 @@
 ﻿import { useState } from "react"
 import axios from "axios"
 import { API } from "../App"
+import { formatEra } from "../services/format"
 
 const S = {
   desc: { fontSize: 13, color: "var(--text3)", marginBottom: 20, lineHeight: 1.7 },
@@ -63,7 +64,7 @@ export default function Locations() {
             <div style={S.profileName}>{result.name || result.figure}</div>
             {result.era !== undefined && (
               <div style={S.profileEra}>
-                {result.era < 0 ? `${Math.abs(result.era)} BC` : `${result.era} AD`}
+                {formatEra(result.era)}
               </div>
             )}
           </div>

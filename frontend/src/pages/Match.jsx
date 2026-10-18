@@ -3,8 +3,10 @@ import axios from "axios"
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, ResponsiveContainer } from "recharts"
 import { API } from "../App"
 import DraggableRadar from "../components/DraggableRadar"
+import { MatchScore } from "../components/Similarity"
 import { findMatches } from "../services/similarity"
 import { saveVectors, loadVectors, getLastUpdated } from "../services/vectorStore"
+import { formatEra } from "../services/format"
 
 const DIMS = ["Oppression", "Group", "Principle", "Trust", "Change", "Emotion", "Motivation", "Mission", "Injustice", "Expression"]
 
@@ -169,10 +171,9 @@ export default function Match() {
             <div key={i} className={`card-hover fade-up fade-up-delay-${i + 1}`} style={S.card}>
               <div style={S.row}>
                 <span style={S.name}>{m.name}</span>
-                <span style={S.era}>{m.era < 0 ? `${Math.abs(m.era)} BC` : `${m.era} AD`}</span>
+                <span style={S.era}>{formatEra(m.era)}</span>
               </div>
-              <div style={S.bar}><div style={S.fill(m.score * 100)} /></div>
-              <div style={S.sim}>{(m.score * 100).toFixed(1)}% behavioural similarity</div>
+              <MatchScore match={m} aLabel="You" bLabel="Them" defaultOpen={i === 0} />
             </div>
           ))}
 
@@ -188,10 +189,9 @@ export default function Match() {
                     <div key={i} style={S.card}>
                       <div style={S.row}>
                         <span style={S.name}>{m.name}</span>
-                        <span style={S.era}>{m.era < 0 ? `${Math.abs(m.era)} BC` : `${m.era} AD`}</span>
+                        <span style={S.era}>{formatEra(m.era)}</span>
                       </div>
-                      <div style={S.bar}><div style={S.fill(m.score * 100)} /></div>
-                      <div style={S.sim}>{(m.score * 100).toFixed(1)}%</div>
+                      <MatchScore match={m} aLabel="You" bLabel="Them" />
                     </div>
                   ))}
                 </div>

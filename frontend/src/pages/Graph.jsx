@@ -1,6 +1,7 @@
 ﻿import { useState } from "react"
 import axios from "axios"
 import { API } from "../App"
+import { formatEra } from "../services/format"
 
 const S = {
   desc: { fontSize: 13, color: "var(--text3)", marginBottom: 20, lineHeight: 1.7 },
@@ -70,12 +71,17 @@ export default function Graph() {
             <div key={i} style={S.nodeCard}>
               <div style={S.nodeRow}>
                 <span style={S.nodeName}>{node.name}</span>
-                <span style={S.nodeEra}>{node.era < 0 ? `${Math.abs(node.era)} BC` : `${node.era} AD`}</span>
+                <span style={S.nodeEra}>{formatEra(node.era)}</span>
               </div>
-              {node.similarity !== undefined && (
+              {node.closeness !== undefined && (
                 <>
-                  <div style={S.bar}><div style={S.fill(node.similarity * 100)} /></div>
-                  <div style={S.sim}>{(node.similarity * 100).toFixed(1)}% similarity</div>
+                  <div style={S.bar}><div style={S.fill(node.closeness * 100)} /></div>
+                  <div style={S.sim}>
+                    {Math.round(node.closeness * 100)}% similarity to {result.center}
+                    {node.known_dimensions !== undefined && (
+                      <span style={{ color: "var(--text4)" }}> · based on {node.known_dimensions} of 10 dimensions</span>
+                    )}
+                  </div>
                 </>
               )}
             </div>
@@ -87,7 +93,11 @@ export default function Graph() {
               {result.edges.slice(0, 10).map((edge, i) => (
                 <div key={i} style={S.edgeCard}>
                   <span style={S.edgePair}>{edge.source_name} — {edge.target_name}</span>
-                  <span style={S.edgeScore}>{(edge.weight * 100).toFixed(1)}%</span>
+                  <span style={S.edgeScore}>
+                    {edge.closeness !== undefined
+                      ? `${Math.round(edge.closeness * 100)}% similarity`
+                      : `${(edge.weight * 100).toFixed(1)}%`}
+                  </span>
                 </div>
               ))}
             </div>

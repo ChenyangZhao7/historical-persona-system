@@ -3,7 +3,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from fastapi import APIRouter
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Optional
 from services.extractor import extract_profile
 from services.matcher import find_matches
@@ -12,7 +12,8 @@ router = APIRouter(prefix="/match", tags=["match"])
 
 class UserInput(BaseModel):
     description: str
-    top_k: int = 5
+    # negative top_k used to return len(results)-1 figures via results[:-1]
+    top_k: int = Field(5, ge=1, le=50)
     weights: Optional[List[float]] = None  # 10 values, default equal weight
 
 @router.post("/")

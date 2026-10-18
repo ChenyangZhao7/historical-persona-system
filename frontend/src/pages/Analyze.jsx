@@ -2,6 +2,7 @@ import { useState, useEffect } from "react"
 import axios from "axios"
 import { API } from "../App"
 import { SkeletonList } from "../components/Skeleton"
+import { formatEra } from "../services/format"
 
 const DIMS = ["Oppression", "Group", "Principle", "Trust", "Change", "Emotion", "Motivation", "Mission", "Injustice", "Expression"]
 
@@ -44,7 +45,7 @@ function DimBars({ vector, confidence }) {
 }
 
 function FigureCard({ figure, expanded, onToggle }) {
-  const era = figure.era === 0 ? "unknown era" : figure.era < 0 ? `${Math.abs(figure.era)} BC` : `${figure.era} AD`
+  const era = formatEra(figure.era)
   return (
     <div className="card-hover" style={S.card}>
       <div style={S.cardHeader(expanded)} onClick={onToggle}>

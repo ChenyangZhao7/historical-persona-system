@@ -152,3 +152,25 @@ def test_reconstruct_returns_narratives(mock_rh):
 def test_root_returns_200():
     r = client.get("/")
     assert r.status_code == 200
+
+# ── input validation (regression: short vectors / negative top_k) ─────────────
+
+def test_predict_rejects_short_vector():
+    r = client.post("/predict/", json={"question": "hi", "user_vector": [0.5] * 3})
+    assert r.status_code == 422
+
+def test_predict_rejects_long_vector():
+    r = client.post("/predict/", json={"question": "hi", "user_vector": [0.5] * 11})
+    assert r.status_code == 422
+
+def test_reconstruct_rejects_short_vector():
+    r = client.post("/reconstruct/", json={"action": "x", "source_vector": [0.5] * 9})
+    assert r.status_code == 422
+
+def test_match_rejects_nonpositive_top_k():
+    r = client.post("/match/", json={"description": "x", "top_k": -1})
+    assert r.status_code == 422
+
+def test_reverse_rejects_nonpositive_top_k():
+    assert client.get("/reverse/Caesar?top_k=0").status_code == 422
+    assert client.get("/reverse/Caesar?top_k=-3").status_code == 422
